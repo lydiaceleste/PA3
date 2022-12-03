@@ -146,12 +146,12 @@ File open_file(char *name, FileMode mode){
                     bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
                     read_sd_block(buf1, FIRST_INODE_BLOCK + dir.inode_index / 4);
 
-                    Inode n;
-                    memcpy(&n, &buf1[dir.inode_index % 4], sizeof(n));
+                    Inode node;
+                    memcpy(&node, &buf1[dir.inode_index % 4], sizeof(node));
                     //make the file
                     file->position = 0;
                     file->mode = mode;
-                    file->inode = n;
+                    file->inode = node;
                     file->dir = dir;
                     file->dir_block = i;
 
@@ -200,7 +200,7 @@ File create_file(char *name){
         //create inode for file
         Inode node;
         node.file_size = 0;
-        for(int i = 0; i < NUM_DIRECT_INODE_BLOCKS+1; i++)
+        for(int i = 0; i < 14; i++)
         {
 
             bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
@@ -231,7 +231,7 @@ File create_file(char *name){
         strcpy(dir.file_name, name);
 
         //find block for direntry
-        for (uint64_t c = FIRST_DIR_ENTRY_BLOCK; c < LAST_DIR_ENTRY_BLOCK; c++)
+        for (uint64_t c = 6; c < 69; c++)
         {
             //read block
             char buf[SOFTWARE_DISK_BLOCK_SIZE];
