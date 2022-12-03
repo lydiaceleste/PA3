@@ -4,7 +4,8 @@
         "chrono": "c",
         "locale": "c",
         "memory": "c",
-        "algorithm": "c"
+        "algorithm": "c",
+        "softwaredisk.h": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }

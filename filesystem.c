@@ -34,13 +34,13 @@ typedef struct IndirectBlock {
 
 //struct for inode
 typedef struct Inode {
-    uint64_t size;                              //file size in bytes
+    uint32_t size;                              //file size in bytes
     uint16_t blocks[NUM_DIRECT_INODE_BLOCKS+1]; //direct blocks + the one indirect
 } Inode;
 
 //struct for a block on inodes
 typedef struct InodeBlock {
-    Inode inodes[SOFTWARE_DISK_BLOCK_SIZE / sizeof(Inode)]; //each inode block holds 128 inodes
+    Inode inodes[INODES_PER_BLOCK]; //each inode block holds 128 inodes
 } InodeBlock;
 
 //struct for directory entries
@@ -64,7 +64,6 @@ typedef struct FileInternals {
     DirectoryEntry dir;     //directory entry
     uint16_t d_block;       //block # for directory entry
 } FileInternals;
-
 
 
 uint64_t allocate_bit(uint8_t *data) {
@@ -330,6 +329,7 @@ unsigned long read_file(File file, void *buf, unsigned long numbytes){
                 //read iblock
                 read_sd_block(buf1, inode.blocks[blocknumber]);
                 //copy into buffer
+                //issues with sizing here
                 memcpy(&buf, &buf1, sizeof(buf1));
                 numbytes -= sizeof(&buf1);
                 blocknumber += 1;
@@ -510,8 +510,21 @@ void fs_print_error(void){
     }
 }
 
-/**
 int check_structure_alignment(void){
-    return 1;
+    printf("sizeof(Inode) should = 32, actual = %lu\n", sizeof(Inode));
+    printf("sizeof(IndirectBlock) should = %d, actual = %lu\n", SOFTWARE_DISK_BLOCK_SIZE, sizeof(IndirectBlock));
+    printf("sizeof(Inode Block) should = %d, actual = %lu\n", SOFTWARE_DISK_BLOCK_SIZE, sizeof(InodeBlock));
+    printf("sizeof(DirectoryEntry) should = 512, actual = %lu\n", sizeof(DirectoryEntry));
+    printf("sizeof(Bitmap) should = %d, actual = %lu\n", SOFTWARE_DISK_BLOCK_SIZE, sizeof(Bitmap));
+
+    if(sizeof(Inode) != 32 || sizeof(IndirectBlock) != SOFTWARE_DISK_BLOCK_SIZE 
+    || sizeof(InodeBlock) != SOFTWARE_DISK_BLOCK_SIZE || sizeof(DirectoryEntry) != 512
+    || sizeof(Bitmap) != SOFTWARE_DISK_BLOCK_SIZE) 
+    {
+        return 0;
+    }
+    else
+    {
+        return 1;
+    }
 }
-**/
