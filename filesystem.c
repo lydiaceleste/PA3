@@ -68,10 +68,9 @@ typedef struct FileInternals {
 
 uint64_t allocate_bit(uint8_t *data) {
     int64_t index = -1;
-    int64_t i, j;
-    for (i = 0; i < SOFTWARE_DISK_BLOCK_SIZE; i++)
+    for (int64_t i = 0; i < SOFTWARE_DISK_BLOCK_SIZE; i++)
     {
-        for (j = 0; j <= 7; j++)
+        for (int64_t j = 0; j <= 7; j++)
         {
             if((data[i] && (1 << (7-j))) == 0)
             {
@@ -84,28 +83,26 @@ uint64_t allocate_bit(uint8_t *data) {
 }
 
 void used_bit(uint8_t *data, int64_t index) {
-    int64_t i, j;
-    for (i = 0; i < SOFTWARE_DISK_BLOCK_SIZE; i++)
+    for (int64_t i = 0; i < SOFTWARE_DISK_BLOCK_SIZE; i++)
     {
-        for (j = 0; j <= 7; j++)
+        for (int64_t j = 0; j <= 7; j++)
         {
             if (i*8+j == index)
             {
-                data[i] |= 1UL << j; //set this bit in bitmap
+                data[i] |= 1UL << j; //set bit in bitmap
             }
         }
     }
 }
 
 void free_bit(uint8_t *data, int64_t index) {
-    int64_t i, j;
-    for (i = 0; i < SOFTWARE_DISK_BLOCK_SIZE; i++)
+    for (int64_t i = 0; i < SOFTWARE_DISK_BLOCK_SIZE; i++)
     {
-        for (j = 0; j <= 7; j++)
+        for (int64_t j = 0; j <= 7; j++)
         {
             if (i*8+j == index)
             {
-                data[i] &= ~(1UL << j); //clear this bit in bitmap
+                data[i] &= ~(1UL << j); //clear bit in bitmap
             }
         }
     }
@@ -128,9 +125,8 @@ File open_file(char *name, FileMode mode){
         {
             //read the block
             char buf[SOFTWARE_DISK_BLOCK_SIZE];
-            int ret;
             bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
-            ret = read_sd_block(buf, i);
+            read_sd_block(buf, i);
 
             //create directory entry to copy data into
             DirectoryEntry dir;
@@ -148,10 +144,10 @@ File open_file(char *name, FileMode mode){
                     //get inode block
                     char buf1[SOFTWARE_DISK_BLOCK_SIZE];
                     bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
-                    ret = read_sd_block(buf1, FIRST_INODE_BLOCK + dir.inode_index / 16);
+                    read_sd_block(buf1, FIRST_INODE_BLOCK + dir.inode_index / 4);
 
                     Inode n;
-                    memcpy(&n, &buf1[dir.inode_index%4], sizeof(n));
+                    memcpy(&n, &buf1[dir.inode_index % 4], sizeof(n));
                     //make the file
                     file->position = 0;
                     file->mode = mode;
@@ -162,7 +158,7 @@ File open_file(char *name, FileMode mode){
                     //set file as opened in the software disk
                     dir.open = 1;
                     memcpy(&buf, &dir, SOFTWARE_DISK_BLOCK_SIZE);
-                    ret = write_sd_block(buf, i);
+                    write_sd_block(buf, i);
                     fserror = FS_NONE;
                     return file;
                 }
@@ -173,7 +169,7 @@ File open_file(char *name, FileMode mode){
                 return NULL;
             }    
         }
-    return file;
+        return file;
     }
 }
 
@@ -190,14 +186,14 @@ File create_file(char *name){
     }
     else
     {
-        printf("entered this loop\n");
+
         //find and allocate a bit in the inode bitmap
         char buf[SOFTWARE_DISK_BLOCK_SIZE];
         //emptying 4096 bytes in buf
         bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
         //read inode bitmap into buffer
         read_sd_block(buf, INODE_BITMAP_BLOCK);
-        //find free bit for file in bitmap
+        //find free bit 
         uint16_t inode_index = allocate_bit((unsigned char*) buf);
         //mark bit as used
         used_bit((unsigned char*) buf, inode_index);
@@ -227,6 +223,7 @@ File create_file(char *name){
         read_sd_block(buf, FIRST_INODE_BLOCK + (inode_index / 128));
 
         //edit block
+        //potential issues with math here
         unsigned long i = (inode_index % 128)*4;
         memcpy(&buf[i], &node, 4);
         write_sd_block(buf, FIRST_INODE_BLOCK + (inode_index / 128));
@@ -242,7 +239,6 @@ File create_file(char *name){
         {
             //read that block
             char buf[SOFTWARE_DISK_BLOCK_SIZE];
-            int ret;
             bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
             read_sd_block(buf, c);
 
@@ -289,11 +285,10 @@ void close_file(File file){
         dir.open = 0;
 
         //write closed entry into buffer
-        char buf[SOFTWARE_DISK_BLOCK_SIZE];
-        int ret;
-        bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
-        memcpy(&buf, &dir, SOFTWARE_DISK_BLOCK_SIZE);
-        ret = write_sd_block(buf, d_block);
+        char buf1[SOFTWARE_DISK_BLOCK_SIZE];
+        bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
+        memcpy(&buf1, &dir, SOFTWARE_DISK_BLOCK_SIZE);
+        write_sd_block(buf1, d_block);
         fserror = FS_NONE;
     }
 }
@@ -309,33 +304,32 @@ unsigned long read_file(File file, void *buf, unsigned long numbytes){
     if(dir.open)
     {
         fserror = FS_FILE_NOT_OPEN;
+        return 0;
     }
-    else
+    else if(position > file_length(file))
     {
-        if(!file_exists(dir.file_name))
-        {
-            fserror = FS_FILE_NOT_FOUND;
-        }
+        fserror = FS_IO_ERROR;
+        return 0;
+    }
         else
         {
             uint32_t blocknumber = 0;
             while(numbytes > 0)
             {
-                char buf[SOFTWARE_DISK_BLOCK_SIZE];
                 char buf1[SOFTWARE_DISK_BLOCK_SIZE];
                 bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
                 //read iblock
                 read_sd_block(buf1, inode.blocks[blocknumber]);
                 //copy into buffer
-                //issues with sizing here
-                memcpy(&buf, &buf1, sizeof(buf1));
-                numbytes -= sizeof(&buf1);
+                //potential issues with sizing here
+                unsigned long x = sizeof(&buf1);
+                memcpy(&buf, &buf1, x);
+                numbytes -= x;
                 blocknumber += 1;
             }
             fserror = FS_NONE;
             return numbytes;
         }
-    }
     return numbytes;
 }
 
@@ -346,6 +340,7 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
     DirectoryEntry dir = file->dir;
     uint16_t d_block = file->dir_block;
     fserror = FS_NONE;
+
     if(dir.open)
     {
         fserror = FS_FILE_NOT_OPEN;
@@ -360,27 +355,22 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
     }
     else
     {
-        if(!file_exists(dir.file_name))
+        uint32_t blocknumber = 0;
+        while(numbytes > 0)
         {
-            fserror = FS_FILE_NOT_FOUND;
-        }
-        else
-        {
-            uint32_t blocknumber = 0;
-            while(numbytes > 0)
-            {
-                char buf1[SOFTWARE_DISK_BLOCK_SIZE];
-                bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
-                read_sd_block(buf1, inode.blocks[blocknumber]);
-                memcpy(&buf, &buf1, sizeof(buf));
-                numbytes -= sizeof(&buf1);
-                blocknumber += 1;
-            }
-            return numbytes;
+            //potential sizing issues here
+            char buf1[SOFTWARE_DISK_BLOCK_SIZE];
+            bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
+            read_sd_block(buf1, inode.blocks[blocknumber]);
+            unsigned long x = sizeof(&buf1);
+            memcpy(&buf, &buf1, x);
+            numbytes -= x;
+            blocknumber += 1;
         }
         fserror = FS_NONE;
-    }
-    return numbytes;
+        return numbytes;
+    }  
+    return numbytes; 
 }
 
 int seek_file(File file, unsigned long bytepos){
@@ -417,14 +407,14 @@ int delete_file(char *name){
     for (i = FIRST_DIR_ENTRY_BLOCK; i < LAST_DIR_ENTRY_BLOCK; i++)
     {
         
-        char buf[SOFTWARE_DISK_BLOCK_SIZE];
-        bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
+        char buf1[SOFTWARE_DISK_BLOCK_SIZE];
+        bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
         //read entry at i into buf
-        read_sd_block(buf, i);
+        read_sd_block(buf1, i);
 
         //create directory entry and copy data from entry i into it 
         DirectoryEntry *dir;
-        memcpy(&dir, &buf, sizeof(dir));
+        memcpy(&dir, &buf1, sizeof(dir));
 
         //is there a matching filename?
         if(strcmp(dir->file_name, name))
@@ -432,8 +422,8 @@ int delete_file(char *name){
             //if so, clear it in the software disk
             //set name to 0
             strcpy(dir->file_name, "\0");
-            memcpy(&buf, &dir, SOFTWARE_DISK_BLOCK_SIZE);
-            write_sd_block(buf, i);
+            memcpy(&buf1, &dir, SOFTWARE_DISK_BLOCK_SIZE);
+            write_sd_block(buf1, i);
             return 1;
         }
     }
@@ -448,14 +438,14 @@ int file_exists(char *name){
     for (i = FIRST_DIR_ENTRY_BLOCK; i < LAST_DIR_ENTRY_BLOCK; i++)
     {
         //read block
-        char buf[SOFTWARE_DISK_BLOCK_SIZE];
-        bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
-        read_sd_block(buf, i);
+        char buf1[SOFTWARE_DISK_BLOCK_SIZE];
+        bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
+        read_sd_block(buf1, i);
 
         //create directory entry and copy data into it 
         DirectoryEntry *dir;
 
-        memcpy(&dir, &buf, sizeof(dir));
+        memcpy(&dir, &buf1, sizeof(dir));
 
         //is there a matching filename?
         if(strcmp(dir->file_name, name))
@@ -500,7 +490,7 @@ void fs_print_error(void){
             printf("FS ERROR: Illegal filename. \n");
             break;
         case FS_IO_ERROR:
-            printf("FS ERROR: Error doing IO. \n");
+            printf("FS ERROR: Something really bad happened. \n");
             break;
         default:
             printf("FS ERROR: Unknown error. \n");
@@ -509,11 +499,11 @@ void fs_print_error(void){
 }
 
 int check_structure_alignment(void){
-    printf("Inode size should = 32, actual = %lu.\n", sizeof(Inode));
-    printf("Indirect block size should = 4096, actual = %lu.\n", sizeof(IndirectBlock));
-    printf("Inode block size should = 4096, actual = %lu.\n", sizeof(InodeBlock));
-    printf("Directory Entry size should = 512, actual = %lu.\n", sizeof(DirectoryEntry));
-    printf("Bitmap size should = 4096, actual = %lu.\n", sizeof(Bitmap));
+    printf("Inode size is: %lu.\n", sizeof(Inode));
+    printf("Indirect block size is: %lu.\n", sizeof(IndirectBlock));
+    printf("Inode block size is: %lu.\n", sizeof(InodeBlock));
+    printf("Directory Entry size is: %lu.\n", sizeof(DirectoryEntry));
+    printf("Bitmap size is: %lu.\n", sizeof(Bitmap));
 
     if(sizeof(Inode) != 32 || sizeof(IndirectBlock) != 4096 || sizeof(InodeBlock) != 4096 
     || sizeof(DirectoryEntry) != 512 || sizeof(Bitmap) != 4096) 
