@@ -34,13 +34,13 @@ typedef struct IndirectBlock {
 
 //struct for inode
 typedef struct Inode {
-    uint32_t file_size;                              //file size
-    uint16_t blocks[NUM_DIRECT_INODE_BLOCKS+1]; //direct blocks + the indirect
+    uint32_t file_size;                       //file size
+    uint16_t blocks[14];                      //direct blocks + the indirect
 } Inode;
 
 //struct for a block on inodes
 typedef struct InodeBlock {
-    Inode inodes[INODES_PER_BLOCK];     //each inode block holds 128 inodes
+    Inode inodes[128];                       //each inode block holds 128 inodes
 } InodeBlock;
 
 //struct for directory entries
@@ -53,22 +53,22 @@ typedef struct DirectoryEntry {
 
 //typedef for a single block bitmap, structure must be size of one block
 typedef struct Bitmap {
-    uint8_t bytes[SOFTWARE_DISK_BLOCK_SIZE];
+    uint8_t bytes[4096];
 } Bitmap;
 
 //struct for main file tyoe
 typedef struct FileInternals {
-    uint64_t position;      //current file position
-    FileMode mode;          //access mode
-    Inode inode;            //inode
-    DirectoryEntry dir;     //directory entry
-    uint16_t dir_block;     //block # for directory entry
+    uint64_t position;                      //current file position
+    FileMode mode;                          //access mode
+    Inode inode;                            //inode
+    DirectoryEntry dir;                     //directory entry
+    uint16_t dir_block;                     //block # for directory entry
 } FileInternals;
 
 
 uint64_t allocate_bit(uint8_t *data) {
     int64_t index = -1;
-    for (int64_t i = 0; i < SOFTWARE_DISK_BLOCK_SIZE; i++)
+    for (int64_t i = 0; i < 4096; i++)
     {
         for (int64_t j = 0; j <= 7; j++)
         {
@@ -83,7 +83,7 @@ uint64_t allocate_bit(uint8_t *data) {
 }
 
 void used_bit(uint8_t *data, int64_t index) {
-    for (int64_t i = 0; i < SOFTWARE_DISK_BLOCK_SIZE; i++)
+    for (int64_t i = 0; i < 4096; i++)
     {
         for (int64_t j = 0; j <= 7; j++)
         {
@@ -96,7 +96,7 @@ void used_bit(uint8_t *data, int64_t index) {
 }
 
 void free_bit(uint8_t *data, int64_t index) {
-    for (int64_t i = 0; i < SOFTWARE_DISK_BLOCK_SIZE; i++)
+    for (int64_t i = 0; i < 4096; i++)
     {
         for (int64_t j = 0; j <= 7; j++)
         {
@@ -120,12 +120,11 @@ File open_file(char *name, FileMode mode){
     else
     {
         //iterate through directory entry blocks for the file
-        uint16_t i;
-        for(i = FIRST_DIR_ENTRY_BLOCK; i < LAST_DIR_ENTRY_BLOCK; i++)
+        for(uint16_t i = 6; i < 69; i++)
         {
             //read the block
-            char buf[SOFTWARE_DISK_BLOCK_SIZE];
-            bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
+            char buf[4096];
+            bzero(buf, 4096);
             read_sd_block(buf, i);
 
             //create directory entry to copy data into
@@ -142,9 +141,9 @@ File open_file(char *name, FileMode mode){
                 else
                 {
                     //get inode block
-                    char buf1[SOFTWARE_DISK_BLOCK_SIZE];
-                    bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
-                    read_sd_block(buf1, FIRST_INODE_BLOCK + dir.inode_index / 4);
+                    char buf1[4096];
+                    bzero(buf1, 4096);
+                    read_sd_block(buf1, 2 + dir.inode_index / 4);
 
                     Inode node;
                     memcpy(&node, &buf1[dir.inode_index % 4], sizeof(node));
@@ -157,7 +156,7 @@ File open_file(char *name, FileMode mode){
 
                     //set file as opened in the software disk
                     dir.open = 1;
-                    memcpy(&buf, &dir, SOFTWARE_DISK_BLOCK_SIZE);
+                    memcpy(&buf, &dir, 4096);
                     write_sd_block(buf, i);
                     fserror = FS_NONE;
                     return file;
@@ -186,9 +185,8 @@ File create_file(char *name){
     }
     else
     {
-        //find and allocate a bit in the inode bitmap
-        char buf[SOFTWARE_DISK_BLOCK_SIZE];
-        bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
+        char buf[4096];
+        bzero(buf, 4096);
         read_sd_block(buf, INODE_BITMAP_BLOCK);
         //find free bit 
         uint16_t inode_index = allocate_bit((unsigned char*) buf);
@@ -203,7 +201,7 @@ File create_file(char *name){
         for(int i = 0; i < 14; i++)
         {
 
-            bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
+            bzero(buf, 4096);
             read_sd_block(buf, DATA_BITMAP_BLOCK);
             //set data_index to the free bit to allocate
             uint16_t data_index = allocate_bit((unsigned char*) buf);
@@ -214,15 +212,12 @@ File create_file(char *name){
             node.blocks[i] = data_index;
         }
 
-        //read destination for inode block
-        bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
-        read_sd_block(buf, FIRST_INODE_BLOCK + (inode_index / 128));
-
-        //edit block
-        //potential logic issues here
-        unsigned long i = (inode_index % 128)*4;
+        //read and write destination for inode block
+        bzero(buf, 4096);
+        read_sd_block(buf, 2 + (inode_index / 128));
+        unsigned long i = (inode_index % 128) * 4;
         memcpy(&buf[i], &node, 4);
-        write_sd_block(buf, FIRST_INODE_BLOCK + (inode_index / 128));
+        write_sd_block(buf, 2 + (inode_index / 128));
 
         //create directory entry and mark it as open
         DirectoryEntry dir;
@@ -234,23 +229,21 @@ File create_file(char *name){
         for (uint64_t c = 6; c < 69; c++)
         {
             //read block
-            char buf[SOFTWARE_DISK_BLOCK_SIZE];
-            bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
+            char buf[4096];
+            bzero(buf, 4096);
             read_sd_block(buf, c);
 
             //make direntry for data
             DirectoryEntry dir;
             memcpy(&dir, &buf, sizeof(dir));
-
-            //filename null? then break
             if(strcmp(dir.file_name, "\0"))
             {
                 fserror = FS_ILLEGAL_FILENAME;
                 break;
             }
         }
-        bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
-        memcpy(&buf, &dir, SOFTWARE_DISK_BLOCK_SIZE);
+        bzero(buf, 4096);
+        memcpy(&buf, &dir, 4096);
         write_sd_block(buf, i);
 
         file->position = 0;
@@ -281,9 +274,9 @@ void close_file(File file){
         dir.open = 0;
 
         //write closed entry into buffer
-        char buf1[SOFTWARE_DISK_BLOCK_SIZE];
-        bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
-        memcpy(&buf1, &dir, SOFTWARE_DISK_BLOCK_SIZE);
+        char buf1[4096];
+        bzero(buf1, 4096);
+        memcpy(&buf1, &dir, 4096);
         write_sd_block(buf1, d_block);
         fserror = FS_NONE;
     }
@@ -312,8 +305,8 @@ unsigned long read_file(File file, void *buf, unsigned long numbytes){
             uint32_t blocknumber = 0;
             while(numbytes > 0)
             {
-                char buf1[SOFTWARE_DISK_BLOCK_SIZE];
-                bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
+                char buf1[4096];
+                bzero(buf1, 4096);
                 //read iblock
                 read_sd_block(buf1, inode.blocks[blocknumber]);
                 //copy into buffer
@@ -355,8 +348,8 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
         while(numbytes > 0)
         {
             //potential sizing issues here
-            char buf1[SOFTWARE_DISK_BLOCK_SIZE];
-            bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
+            char buf1[4096];
+            bzero(buf1, 4096);
             read_sd_block(buf1, inode.blocks[blocknumber]);
             unsigned long x = sizeof(&buf1);
             memcpy(&buf, &buf1, x);
@@ -397,14 +390,12 @@ unsigned long file_length(File file){
 }
 
 int delete_file(char *name){
-    int i, j;
     fserror = FS_NONE;
     //search through directory entries for file
-    for (i = FIRST_DIR_ENTRY_BLOCK; i < LAST_DIR_ENTRY_BLOCK; i++)
+    for (int i = 6; i < 69; i++)
     {
-        
-        char buf1[SOFTWARE_DISK_BLOCK_SIZE];
-        bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
+        char buf1[4096];
+        bzero(buf1, 4096);
         //read entry at i into buf
         read_sd_block(buf1, i);
 
@@ -418,7 +409,7 @@ int delete_file(char *name){
             //if so, clear it in the software disk
             //set name to 0
             strcpy(dir->file_name, "\0");
-            memcpy(&buf1, &dir, SOFTWARE_DISK_BLOCK_SIZE);
+            memcpy(&buf1, &dir, 4096);
             write_sd_block(buf1, i);
             return 1;
         }
@@ -428,19 +419,17 @@ int delete_file(char *name){
 }
 
 int file_exists(char *name){
-    int i, j;
-    //go through directory entries for file
     fserror = FS_NONE;
-    for (i = FIRST_DIR_ENTRY_BLOCK; i < LAST_DIR_ENTRY_BLOCK; i++)
+    //go through directory entries for file
+    for (int i = 6; i < 69; i++)
     {
         //read block
-        char buf1[SOFTWARE_DISK_BLOCK_SIZE];
-        bzero(buf1, SOFTWARE_DISK_BLOCK_SIZE);
+        char buf1[4096];
+        bzero(buf1, 4096);
         read_sd_block(buf1, i);
 
         //create directory entry and copy data into it 
         DirectoryEntry *dir;
-
         memcpy(&dir, &buf1, sizeof(dir));
 
         //is there a matching filename?
