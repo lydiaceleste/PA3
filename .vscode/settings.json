@@ -5,7 +5,18 @@
         "locale": "c",
         "memory": "c",
         "algorithm": "c",
-        "softwaredisk.h": "c"
+        "softwaredisk.h": "c",
+        "__locale": "c",
+        "__string": "c",
+        "concepts": "c",
+        "cstdlib": "c",
+        "memory_resource": "c",
+        "ostream": "c",
+        "system_error": "c",
+        "type_traits": "c",
+        "typeinfo": "c",
+        "version": "c",
+        "cstdio": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }

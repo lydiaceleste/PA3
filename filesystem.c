@@ -34,21 +34,21 @@ typedef struct IndirectBlock {
 
 //struct for inode
 typedef struct Inode {
-    uint32_t size;                              //file size in bytes
-    uint16_t blocks[NUM_DIRECT_INODE_BLOCKS+1]; //direct blocks + the one indirect
+    uint32_t size;                              //file size
+    uint16_t blocks[NUM_DIRECT_INODE_BLOCKS+1]; //direct blocks + the indirect
 } Inode;
 
 //struct for a block on inodes
 typedef struct InodeBlock {
-    Inode inodes[INODES_PER_BLOCK]; //each inode block holds 128 inodes
+    Inode inodes[INODES_PER_BLOCK];     //each inode block holds 128 inodes
 } InodeBlock;
 
 //struct for directory entries
 typedef struct DirectoryEntry {
-    uint16_t file_open;                 //is the file open?
-    uint16_t inode_index;               //inode index
-    char name[MAX_FILENAME_SIZE];       //NULL term ASCII filename
-                                        //free if first character of filename is null
+    uint16_t open;                           //is the file open?
+    uint16_t inode_index;                    //inode index
+    char file_name[MAX_FILENAME_SIZE];       //NULL term ASCII filename
+                                             //free if first character of filename is null
 } DirectoryEntry;
 
 //typedef for a single block bitmap, structure must be size of one block
@@ -62,7 +62,7 @@ typedef struct FileInternals {
     FileMode mode;          //access mode
     Inode inode;            //inode
     DirectoryEntry dir;     //directory entry
-    uint16_t d_block;       //block # for directory entry
+    uint16_t dir_block;     //block # for directory entry
 } FileInternals;
 
 
@@ -136,10 +136,10 @@ File open_file(char *name, FileMode mode){
             DirectoryEntry dir;
             memcpy(&dir, &buf, sizeof(dir));
             //does the filename match?
-            if(strcmp(dir.name, name))
+            if(strcmp(dir.file_name, name))
             {
                 //check if file is open
-                if(dir.file_open)
+                if(dir.open)
                 {
                     fserror = FS_FILE_OPEN;
                 }
@@ -157,10 +157,10 @@ File open_file(char *name, FileMode mode){
                     file->mode = mode;
                     file->inode = n;
                     file->dir = dir;
-                    file->d_block = i;
+                    file->dir_block = i;
 
                     //set file as opened in the software disk
-                    dir.file_open = 1;
+                    dir.open = 1;
                     memcpy(&buf, &dir, SOFTWARE_DISK_BLOCK_SIZE);
                     ret = write_sd_block(buf, i);
                     fserror = FS_NONE;
@@ -202,10 +202,9 @@ File create_file(char *name){
         used_bit((unsigned char*) buf, inode_index);
         //update bitmap
         write_sd_block(buf, INODE_BITMAP_BLOCK);
-
         //create inode for file
-        Inode n;
-        n.size = 0;
+        Inode node;
+        node.size = 0;
         for(int i = 0; i < NUM_DIRECT_INODE_BLOCKS+1; i++)
         {
 
@@ -219,7 +218,7 @@ File create_file(char *name){
             // writes a block of data from 'buf' at the location of the inode bitmap
             write_sd_block(buf, INODE_BITMAP_BLOCK);
             //add it to inode blocks
-            n.blocks[i] = data_index;
+            node.blocks[i] = data_index;
         }
 
         //read destination for inode block
@@ -230,14 +229,14 @@ File create_file(char *name){
 
         //edit block
         unsigned long i = (inode_index % 128)*4;
-        memcpy(&buf[i], &n, 4);
+        memcpy(&buf[i], &node, 4);
         write_sd_block(buf, FIRST_INODE_BLOCK + (inode_index / 128));
 
         //create directory entry and mark it as open
         DirectoryEntry dir;
-        dir.file_open = 1;
+        dir.open = 1;
         dir.inode_index = inode_index;
-        strcpy(dir.name, name);
+        strcpy(dir.file_name, name);
 
         //find block for said directory entry
         for (uint64_t c = FIRST_DIR_ENTRY_BLOCK; c < LAST_DIR_ENTRY_BLOCK; c++)
@@ -253,7 +252,7 @@ File create_file(char *name){
             memcpy(&dir, &buf, sizeof(dir));
 
             //filename null? then break
-            if(strcmp(dir.name, "/0"))
+            if(strcmp(dir.file_name, "/0"))
             {
                 break;
             }
@@ -262,12 +261,11 @@ File create_file(char *name){
         memcpy(&buf, &dir, SOFTWARE_DISK_BLOCK_SIZE);
         write_sd_block(buf, i);
 
-        //create file
         file->position = 0;
         file->mode = READ_WRITE;
-        file->inode = n;
+        file->inode = node;
         file->dir = dir;
-        file->d_block = i;
+        file->dir_block = i;
 
         fserror = FS_NONE;
         return file;
@@ -277,7 +275,7 @@ File create_file(char *name){
 
 void close_file(File file){
     fserror = FS_NONE;
-    if(file->dir.file_open == 0) 
+    if(file->dir.open == 0) 
     {
         fserror = FS_FILE_NOT_OPEN;
     }
@@ -285,10 +283,10 @@ void close_file(File file){
     {
         Inode inode = file->inode;
         DirectoryEntry dir = file->dir;
-        uint16_t d_block = file->d_block;
+        uint16_t d_block = file->dir_block;
 
         //set file to closed
-        dir.file_open = 0;
+        dir.open = 0;
 
         //write closed entry into buffer
         char buf[SOFTWARE_DISK_BLOCK_SIZE];
@@ -306,15 +304,15 @@ unsigned long read_file(File file, void *buf, unsigned long numbytes){
     FileMode mode = file->mode;
     Inode inode = file->inode;
     DirectoryEntry dir = file->dir;
-    uint16_t d_block = file->d_block;
+    uint16_t d_block = file->dir_block;
     fserror = FS_NONE;
-    if(dir.file_open)
+    if(dir.open)
     {
         fserror = FS_FILE_NOT_OPEN;
     }
     else
     {
-        if(!file_exists(dir.name))
+        if(!file_exists(dir.file_name))
         {
             fserror = FS_FILE_NOT_FOUND;
         }
@@ -346,9 +344,9 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
     FileMode mode = file->mode;
     Inode inode = file->inode;
     DirectoryEntry dir = file->dir;
-    uint16_t d_block = file->d_block;
+    uint16_t d_block = file->dir_block;
     fserror = FS_NONE;
-    if(dir.file_open)
+    if(dir.open)
     {
         fserror = FS_FILE_NOT_OPEN;
     }
@@ -362,7 +360,7 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
     }
     else
     {
-        if(!file_exists(dir.name))
+        if(!file_exists(dir.file_name))
         {
             fserror = FS_FILE_NOT_FOUND;
         }
@@ -400,7 +398,7 @@ int seek_file(File file, unsigned long bytepos){
 }
 
 unsigned long file_length(File file){
-    if(!file_exists(file->dir.name))
+    if(!file_exists(file->dir.file_name))
     {
         fserror = FS_FILE_NOT_FOUND;
         return 0;
@@ -429,11 +427,11 @@ int delete_file(char *name){
         memcpy(&dir, &buf, sizeof(dir));
 
         //is there a matching filename?
-        if(strcmp(dir->name, name))
+        if(strcmp(dir->file_name, name))
         {
             //if so, clear it in the software disk
             //set name to 0
-            strcpy(dir->name, "\0");
+            strcpy(dir->file_name, "\0");
             memcpy(&buf, &dir, SOFTWARE_DISK_BLOCK_SIZE);
             write_sd_block(buf, i);
             return 1;
@@ -460,7 +458,7 @@ int file_exists(char *name){
         memcpy(&dir, &buf, sizeof(dir));
 
         //is there a matching filename?
-        if(strcmp(dir->name, name))
+        if(strcmp(dir->file_name, name))
         {
             return 1;
         }
