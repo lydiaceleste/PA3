@@ -186,12 +186,9 @@ File create_file(char *name){
     }
     else
     {
-
         //find and allocate a bit in the inode bitmap
         char buf[SOFTWARE_DISK_BLOCK_SIZE];
-        //emptying 4096 bytes in buf
         bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
-        //read inode bitmap into buffer
         read_sd_block(buf, INODE_BITMAP_BLOCK);
         //find free bit 
         uint16_t inode_index = allocate_bit((unsigned char*) buf);
@@ -199,6 +196,7 @@ File create_file(char *name){
         used_bit((unsigned char*) buf, inode_index);
         //update bitmap
         write_sd_block(buf, INODE_BITMAP_BLOCK);
+        
         //create inode for file
         Inode node;
         node.file_size = 0;
@@ -206,13 +204,11 @@ File create_file(char *name){
         {
 
             bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
-            // reads a block of data into 'buf' from the data bitmap block
             read_sd_block(buf, DATA_BITMAP_BLOCK);
             //set data_index to the free bit to allocate
             uint16_t data_index = allocate_bit((unsigned char*) buf);
             //mark bit at data_index as used
             used_bit((unsigned char*) buf, data_index);
-            // writes a block of data from 'buf' at the location of the inode bitmap
             write_sd_block(buf, INODE_BITMAP_BLOCK);
             //add it to inode blocks
             node.blocks[i] = data_index;
@@ -223,7 +219,7 @@ File create_file(char *name){
         read_sd_block(buf, FIRST_INODE_BLOCK + (inode_index / 128));
 
         //edit block
-        //potential issues with math here
+        //potential logic issues here
         unsigned long i = (inode_index % 128)*4;
         memcpy(&buf[i], &node, 4);
         write_sd_block(buf, FIRST_INODE_BLOCK + (inode_index / 128));
@@ -234,23 +230,23 @@ File create_file(char *name){
         dir.inode_index = inode_index;
         strcpy(dir.file_name, name);
 
-        //find block for said directory entry
+        //find block for direntry
         for (uint64_t c = FIRST_DIR_ENTRY_BLOCK; c < LAST_DIR_ENTRY_BLOCK; c++)
         {
-            //read that block
+            //read block
             char buf[SOFTWARE_DISK_BLOCK_SIZE];
             bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
             read_sd_block(buf, c);
 
-            //create directory entry and copy data into it
+            //make direntry for data
             DirectoryEntry dir;
             memcpy(&dir, &buf, sizeof(dir));
 
             //filename null? then break
             if(strcmp(dir.file_name, "\0"))
             {
-                break;
                 fserror = FS_ILLEGAL_FILENAME;
+                break;
             }
         }
         bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
@@ -294,13 +290,13 @@ void close_file(File file){
 }
 
 unsigned long read_file(File file, void *buf, unsigned long numbytes){
-    
     uint32_t position = file->position;
     FileMode mode = file->mode;
     Inode inode = file->inode;
     DirectoryEntry dir = file->dir;
     uint16_t d_block = file->dir_block;
     fserror = FS_NONE;
+
     if(dir.open)
     {
         fserror = FS_FILE_NOT_OPEN;
