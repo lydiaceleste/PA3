@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "__config": "c",
+        "chrono": "c",
+        "locale": "c",
+        "memory": "c",
+        "algorithm": "c"
+    },
+    "C_Cpp.errorSquiggles": "Disabled"
+}
