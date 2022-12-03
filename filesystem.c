@@ -34,7 +34,7 @@ typedef struct IndirectBlock {
 
 //struct for inode
 typedef struct Inode {
-    uint32_t size;                              //file size
+    uint32_t file_size;                              //file size
     uint16_t blocks[NUM_DIRECT_INODE_BLOCKS+1]; //direct blocks + the indirect
 } Inode;
 
@@ -190,6 +190,7 @@ File create_file(char *name){
     }
     else
     {
+        printf("entered this loop\n");
         //find and allocate a bit in the inode bitmap
         char buf[SOFTWARE_DISK_BLOCK_SIZE];
         //emptying 4096 bytes in buf
@@ -204,7 +205,7 @@ File create_file(char *name){
         write_sd_block(buf, INODE_BITMAP_BLOCK);
         //create inode for file
         Inode node;
-        node.size = 0;
+        node.file_size = 0;
         for(int i = 0; i < NUM_DIRECT_INODE_BLOCKS+1; i++)
         {
 
@@ -223,8 +224,6 @@ File create_file(char *name){
 
         //read destination for inode block
         bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
-        //index is where the inode is in the bitmap
-        //reads data from FIRST_INODE_BLOCK + (inode_index / 128) into buf
         read_sd_block(buf, FIRST_INODE_BLOCK + (inode_index / 128));
 
         //edit block
@@ -252,9 +251,10 @@ File create_file(char *name){
             memcpy(&dir, &buf, sizeof(dir));
 
             //filename null? then break
-            if(strcmp(dir.file_name, "/0"))
+            if(strcmp(dir.file_name, "\0"))
             {
                 break;
+                fserror = FS_ILLEGAL_FILENAME;
             }
         }
         bzero(buf, SOFTWARE_DISK_BLOCK_SIZE);
@@ -406,7 +406,7 @@ unsigned long file_length(File file){
     else
     {
         fserror = FS_NONE;
-        return file->inode.size;
+        return file->inode.file_size;
     }
 }
 
@@ -509,15 +509,14 @@ void fs_print_error(void){
 }
 
 int check_structure_alignment(void){
-    printf("sizeof(Inode) should = 32, actual = %lu\n", sizeof(Inode));
-    printf("sizeof(IndirectBlock) should = %d, actual = %lu\n", SOFTWARE_DISK_BLOCK_SIZE, sizeof(IndirectBlock));
-    printf("sizeof(Inode Block) should = %d, actual = %lu\n", SOFTWARE_DISK_BLOCK_SIZE, sizeof(InodeBlock));
-    printf("sizeof(DirectoryEntry) should = 512, actual = %lu\n", sizeof(DirectoryEntry));
-    printf("sizeof(Bitmap) should = %d, actual = %lu\n", SOFTWARE_DISK_BLOCK_SIZE, sizeof(Bitmap));
+    printf("Inode size should = 32, actual = %lu.\n", sizeof(Inode));
+    printf("Indirect block size should = 4096, actual = %lu.\n", sizeof(IndirectBlock));
+    printf("Inode block size should = 4096, actual = %lu.\n", sizeof(InodeBlock));
+    printf("Directory Entry size should = 512, actual = %lu.\n", sizeof(DirectoryEntry));
+    printf("Bitmap size should = 4096, actual = %lu.\n", sizeof(Bitmap));
 
-    if(sizeof(Inode) != 32 || sizeof(IndirectBlock) != SOFTWARE_DISK_BLOCK_SIZE 
-    || sizeof(InodeBlock) != SOFTWARE_DISK_BLOCK_SIZE || sizeof(DirectoryEntry) != 512
-    || sizeof(Bitmap) != SOFTWARE_DISK_BLOCK_SIZE) 
+    if(sizeof(Inode) != 32 || sizeof(IndirectBlock) != 4096 || sizeof(InodeBlock) != 4096 
+    || sizeof(DirectoryEntry) != 512 || sizeof(Bitmap) != 4096) 
     {
         return 0;
     }

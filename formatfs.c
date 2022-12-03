@@ -13,8 +13,7 @@ int main() {
     }
     else
     {
-        printf("Check succeeded.\n");
-        printf("Initializing software disk.\n");
+        printf("Check succeeded. Initializing software disk.\n");
         init_software_disk();
     }
     return 0;
